@@ -6,18 +6,21 @@ import { nanoid } from 'nanoid';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import admin from "firebase-admin";
-import serviceAccountKey from "./etc/secrets/firebase_private_key.json" with { type: "json" }
+// import serviceAccountKey from "./etc/secrets/firebase_private_key.json" with { type: "json" }
 import { getAuth } from "firebase-admin/auth";
 import User from './Schema/User.js';
 import swaggerJsdoc from 'swagger-jsdoc';
 import swaggerUi from 'swagger-ui-express';
 import rateLimit from 'express-rate-limit';
+import fs from 'fs';
+ 
+const serviceAccountKey = JSON.parse(
+  fs.readFileSync("./etc/secrets/firebase_private_key.json", "utf-8")
+);
 
 const server = express();
 
-admin.initializeApp({
-    credential: admin.credential.cert(serviceAccountKey)
-})
+admin.initializeApp({ credential: admin.credential.cert(serviceAccountKey) })
 
 let emailRegex = /^\w+([\.-]?\w+)*@\w+([\.-]?\w+)*(\.\w{2,3})+$/;
 let passwordRegex = /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z]).{6,20}$/;
@@ -104,6 +107,8 @@ const verifyJWT = (req, res, next) => {
 
 const formatDatatoSend = (user) => {
 
+    console.log(user._id)
+
     const access_token = jwt.sign({ id: user._id, admin: user.admin }, process.env.SECRET_ACCESS_KEY)
 
     return {
@@ -184,13 +189,12 @@ server.post("/users/login", standard_limiter, (req, res) => {
                 return res.status(403).json({ "error": "Email not found" });
             }
 
-
-            if (!user.google_auth || !user.facebook_auth) {
+            if (!user.google_auth && !user.facebook_auth) {
 
                 bcrypt.compare(password, user.personal_info.password, (err, result) => {
 
                     if (err) {
-                        return res.status(403).json({ "error": "Error occured while login please try again" });
+                        return res.status(403).json({ "error": "Error occured while logging in. Please try again" });
                     }
 
                     if (!result) {
@@ -357,6 +361,7 @@ server.put("/users/:id", verifyJWT, edit_account_limiter, (req, res) => {
     if (req.user !== req.params.id) return res.status(403).json({ error: "Forbidden" });
 
     User.findOneAndUpdate({ _id: req.params.id }, updateData, { new: true, runValidators: true })
+    .select("-personal_info.password -google_auth -facebook_auth -updatedAt -posts -admin")
         .then(updatedUser => {
             if (!updatedUser) {
                 return res.status(404).json({ error: "User not found" });
@@ -383,44 +388,52 @@ server.post("/users/:id", verifyJWT, edit_account_limiter, (req, res) => {
 
     User.findOne({ _id: req.user })
         .then((user) => {
-
-            if (user.google_auth) {
-                return res.status(403).json({ error: "You can't change account's password because you logged in through google" })
+            console.log(user)
+            if (!user) {
+                return res.status(500).json({ error: "User not found" })
+            } else {
+                if (user.google_auth) {
+                    return res.status(403).json({ error: "You can't change account's password because you logged in through google" })
+                }
+    
+                bcrypt.compare(currentPassword, user.personal_info.password, (err, result) => {
+                    if (err) {
+                        return res.status(500).json({ error: "Some error occured while changing the password, please try again later" })
+                    }
+    
+                    if (!result) {
+                        return res.status(403).json({ error: "Incorrect current password" })
+                    }
+    
+                    bcrypt.hash(newPassword, 10, (err, hashed_password) => {
+    
+                        User.findOneAndUpdate({ _id: req.user }, { "personal_info.password": hashed_password })
+                            .then((u) => {
+                                return res.status(200).json({ status: 'password changed' })
+                            })
+                            .catch(err => {
+                                return res.status(500).json({ error: 'Some error occured while saving new password, please try again later' })
+                            })
+    
+                    })
+                })
             }
 
-            bcrypt.compare(currentPassword, user.personal_info.password, (err, result) => {
-                if (err) {
-                    return res.status(500).json({ error: "Some error occured while changing the password, please try again later" })
-                }
-
-                if (!result) {
-                    return res.status(403).json({ error: "Incorrect current password" })
-                }
-
-                bcrypt.hash(newPassword, 10, (err, hashed_password) => {
-
-                    User.findOneAndUpdate({ _id: req.user }, { "personal_info.password": hashed_password })
-                        .then((u) => {
-                            return res.status(200).json({ status: 'password changed' })
-                        })
-                        .catch(err => {
-                            return res.status(500).json({ error: 'Some error occured while saving new password, please try again later' })
-                        })
-
-                })
-            })
 
         })
         .catch(err => {
             console.log(err);
-            res.status(500).json({ error: "User not found" })
+            return res.status(500).json({ error: "Unexpected server error" })
         })
 
 })
 
 // Delete User
 server.delete("/users/:id", verifyJWT, delete_account_limiter, (req, res) => {
+    
     if (req.user !== req.params.id) return res.status(403).json({ error: "Forbidden" });
+
+    console.log(req.params.id)
 
     User.findByIdAndDelete(req.params.id)
         .then(deletedUser => {
@@ -440,3 +453,5 @@ server.delete("/users/:id", verifyJWT, delete_account_limiter, (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
     console.log('listening on port -> ' + PORT);
 })
+
+export default server;
