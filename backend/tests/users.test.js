@@ -1,30 +1,66 @@
 import request from "supertest";
 import server from "../server.js";
+import { verifyJWT, generateUsername, formatDatatoSend } from "../server.js";
 import jwt from "jsonwebtoken";
-import admin from "firebase-admin";
 import { jest } from "@jest/globals"
-import fs from 'fs';
-
-const serviceAccountKey = JSON.parse(
-  fs.readFileSync("./etc/secrets/firebase_private_key.json", "utf-8")
-);
+import User from "../Schema/User.js";
+import bcrypt from 'bcrypt';
+import mongoose from "mongoose";
+import { getAuth } from "firebase-admin/auth";
 
 let access_token = "";
 let user_id = "";
-let mockUserToken = "";
-let mockUserNoOAuthToken = "";
 
-const mockUser = {
-  email: "newuser@example.com",
-  name: "New User",
-  picture: "https://example.com/profile.jpg"
-};
+describe('verifyJWT', () => {
+  let mockReq;
+  let mockRes;
+  let nextFunction;
 
-const mockUserNoOAuth = {
-  email: "no-oath@example.com",
-  name: "No oath",
-  picture: "https://example.com/profile.jpg"
-};
+  beforeEach(() => {
+    mockReq = {
+      headers: {}
+    };
+    mockRes = {
+      status: jest.fn().mockReturnThis(),
+      json: jest.fn()
+    };
+    nextFunction = jest.fn();
+  });
+
+  test('should fail if no token is provided', () => {
+    verifyJWT(mockReq, mockRes, nextFunction);
+
+    console.log(mockRes)
+
+    expect(mockRes.status).toHaveBeenCalledWith(401);
+    expect(mockRes.json).toHaveBeenCalledWith({ error: "No access token" });
+  });
+
+  test('should fail if token is invalid', () => {
+    mockReq.headers['authorization'] = 'Bearer invalid_token';
+
+    verifyJWT(mockReq, mockRes, nextFunction);
+
+    expect(mockRes.status).toHaveBeenCalledWith(403);
+    expect(mockRes.json).toHaveBeenCalledWith({ error: "Access token is invalid" });
+  });
+
+  test('should call next() and set user data if token is valid', () => {
+    const validToken = jwt.sign(
+      { id: '123', admin: true },
+      process.env.SECRET_ACCESS_KEY
+    );
+    mockReq.headers['authorization'] = `Bearer ${validToken}`;
+
+    verifyJWT(mockReq, mockRes, nextFunction);
+
+    expect(mockReq.user).toBe('123');
+    expect(mockReq.admin).toBe(true);
+    expect(nextFunction).toHaveBeenCalled();
+    expect(mockRes.status).not.toHaveBeenCalled();
+    expect(mockRes.json).not.toHaveBeenCalled();
+  });
+});
 
 describe("POST /users", () => {
   it("should create a new user", async () => {
@@ -83,6 +119,36 @@ describe("POST /users", () => {
     expect(res.statusCode).toEqual(500);
     expect(res.body).toHaveProperty("error", "Email already exists");
   });
+
+  it('should fail if there is an unexpected server error', async () => {
+    const mockSave = jest.fn().mockRejectedValueOnce(new Error('Some server error'));
+
+    User.prototype.save = mockSave;
+
+    jest.mock('bcrypt', () => ({
+      hash: jest.fn((password, saltRounds, callback) => {
+        callback(null, 'hashed_password');
+      }),
+    }));
+
+    jest.mock('../server.js', () => ({
+      generateUsername: jest.fn(() => 'testuser')
+    }));
+
+    const userDetails = {
+      fullname: 'Test User',
+      email: 'test10@email.com',
+      password: 'Test1234!'
+    };
+
+    const response = await request(server)
+      .post('/users')
+      .send(userDetails);
+
+    expect(response.statusCode).toBe(500);
+    expect(response.body).toHaveProperty("error", "Some server error");
+    expect(mockSave).toHaveBeenCalled();
+  });
 });
 
 describe("POST /users/login", () => {
@@ -123,14 +189,210 @@ describe("POST /users/login", () => {
     expect(res.body).toHaveProperty("error", "Incorrect password");
   });
 
-  it("should fail if user created account with an oauth provider", async () => {
-    const res = await request(server)
-      .post("/users/login")
-      .send({ email: "mail4brando@gmail.com", password: "Test1234!" });
-    expect(res.statusCode).toEqual(403);
-    expect(res.body).toHaveProperty("error", "Account was created using an oauth provider. Try logging in with with Facebook or Google.");
+  test('should fail if user account was created with oauth', async () => {
+    const mockUser = {
+      personal_info: {
+        email: 'test@example.com',
+      },
+      google_auth: true,
+      facebook_auth: false
+    };
+
+    jest.spyOn(User, 'findOne').mockImplementationOnce(() => Promise.resolve(mockUser));
+
+    jest.spyOn(bcrypt, 'compare').mockImplementationOnce((password, hash, callback) => {
+      callback(null, false);
+    });
+
+    const response = await request(server)
+      .post('/users/login')
+      .send({
+        email: 'test@example.com',
+        password: 'anypassword'
+      });
+
+    expect(response.statusCode).toEqual(403);
+    expect(response.body).toHaveProperty("error", "Account was created using an oauth provider. Try logging in with with Facebook or Google.")
+    expect(User.findOne).toHaveBeenCalledWith({ "personal_info.email": "test@example.com" });
+    expect(bcrypt.compare).not.toHaveBeenCalled();
+
+    jest.restoreAllMocks();
+  });
+
+  it('should fail if there is an unexpected server error', async () => {
+    const originalFindOne = User.findOne;
+
+    User.findOne = jest.fn(() => {
+      return Promise.reject(new Error('Simulated server error'));
+    });
+
+    const response = await request(server)
+      .post('/users/login')
+      .send({
+        email: 'test@example.com',
+        password: 'Test1234!'
+      });
+
+    expect(response.statusCode).toEqual(500);
+    expect(response.body).toHaveProperty('error', 'Simulated server error');
+
+    User.findOne = originalFindOne;
   });
 });
+
+// test('Successful Google Sign Up for New User', async () => {  
+//   // Mock the request and response objects
+//   const req = { body: { access_token: 'mock_access_token' } };
+  
+//   const res = {
+//     status: jest.fn(() => res),
+//     json: jest.fn()
+//   };
+
+//   const next = jest.fn();
+
+//   // Mock User model methods
+//   const mockedUser = {
+//       findOne: jest.fn().mockResolvedValue(null),  // No existing user
+//       save: jest.fn().mockResolvedValue({ _id: 'newUserId' })
+//   };
+//   jest.mock('../Schema/User.js', () => ({
+//       User: jest.fn(() => mockedUser)
+//   }));
+
+//   // Mock other dependencies
+//   jest.mock('firebase-admin/auth', () => ({
+//       getAuth: jest.fn().mockReturnValue({
+//           verifyIdToken: jest.fn().mockResolvedValue({
+//               email: 'new@user.com',
+//               name: 'New User',
+//               picture: 'user-picture-url'
+//           })
+//       })
+//   }));
+
+//   jest.mock('../server.js', () => ({
+//       generateUsername: jest.fn().mockResolvedValue('newuser123'),
+//       formatDatatoSend: jest.fn().mockReturnValue({ user: 'formatted-user-data' }),
+//       default: jest.fn() // Ensure server.js doesn't interfere
+//   }));
+
+//   // Get the route handler for "/google-auth"
+//   const googleAuthHandler = server._router.stack.find(
+//     (layer) => layer.route?.path === "/google-auth" && layer.route.methods.post
+//   )?.route.stack[0].handle;
+
+//   if (!googleAuthHandler) {
+//     throw new Error("Route handler for /google-auth not found");
+//   }
+
+//   // Execute the route handler
+//   await googleAuthHandler(req, res, next);
+
+//   // expect(next).not.toHaveBeenCalled();
+
+//   console.log(res)
+
+//   // Assertions
+//   expect(res.status).toHaveBeenCalledWith(200);
+//   expect(res.json).toHaveBeenCalledWith({ user: 'formatted-user-data' });
+//   expect(console.log).toHaveBeenCalledWith("You successfully signed in with Google!");
+// });
+
+// beforeEach(async () => {
+//   await User.deleteMany({});
+// });
+
+// afterAll(async () => {
+//   await mongoose.connection.close();
+// });
+
+// describe('POST /google-auth', () => {
+//   test('should log in existing user with google_auth enabled', async () => {
+//       const user = new User({
+//           personal_info: {
+//               fullname: 'Test User',
+//               email: 'testuser@gmail.com',
+//               username: 'testuser',
+//               profile_img: 'https://example.com/image.jpg'
+//           },
+//           admin: false,
+//           google_auth: true,
+//           facebook_auth: false
+//       });
+//       await user.save();
+
+//       jest.spyOn(getAuth(), 'verifyIdToken').mockResolvedValue({
+//           email: 'testuser@gmail.com',
+//           name: 'Test User',
+//           picture: 'https://example.com/s96-c/image.jpg'
+//       });
+
+//       const response = await request(server)
+//           .post('/google-auth')
+//           .send({ access_token: access_token });
+
+//       console.log(response.body)
+
+//       expect(response.status).toBe(200);
+//       expect(response.body.personal_info.email).toBe('testuser@gmail.com');
+//   });
+
+//   test('should prevent login if google_auth is disabled', async () => {
+//       const user = new User({
+//           personal_info: {
+//               fullname: 'Test User',
+//               email: 'testuser@gmail.com',
+//               username: 'testuser',
+//               profile_img: 'https://example.com/image.jpg'
+//           },
+//           admin: false,
+//           google_auth: false,
+//           facebook_auth: false
+//       });
+//       await user.save();
+
+//       jest.spyOn(getAuth(), 'verifyIdToken').mockResolvedValue({
+//           email: 'testuser@gmail.com',
+//           name: 'Test User',
+//           picture: 'https://example.com/s96-c/image.jpg'
+//       });
+
+//       const response = await request(server)
+//           .post('/google-auth')
+//           .send({ access_token: access_token });
+
+//       expect(response.status).toBe(403);
+//       expect(response.body.error).toBe('This email was signed up without google. Please log in with password to access the account');
+//   });
+
+//   test('should sign up new user', async () => {
+//       jest.spyOn(getAuth(), 'verifyIdToken').mockResolvedValue({
+//           email: 'newuser@gmail.com',
+//           name: 'New User',
+//           picture: 'https://example.com/s96-c/image.jpg'
+//       });
+
+//       const response = await request(server)
+//           .post('/google-auth')
+//           .send({ access_token: access_token });
+
+//       expect(response.status).toBe(200);
+//       expect(response.body.personal_info.email).toBe('newuser@gmail.com');
+//   });
+
+//   test('should return 500 if token verification fails', async () => {
+//       jest.spyOn(getAuth(), 'verifyIdToken').mockRejectedValue(new Error('Invalid token'));
+
+//       const response = await request(server)
+//           .post('/google-auth')
+//           .send({ access_token: 'invalid_token' });
+
+//       expect(response.status).toBe(500);
+//       expect(response.body.error).toBe('Failed to authenticate you with google. Try with some other google account');
+//   });
+// });
+
 
 describe("GET /users/:username", () => {
   it("should get user data", async () => {
@@ -150,200 +412,203 @@ describe("GET /users/:username", () => {
     expect(res.statusCode).toEqual(404);
     expect(res.body).toHaveProperty("error", "User not found");
   });
-
-  // it("should return 500 if an unexpected error occurs", async () => {
-  //   const mockUserFindOne = jest.fn().mockRejectedValue(new Error('Database Error'));
-  //   jest.mock('../Schema/User.js', () => ({
-  //     findOne: mockUserFindOne 
-  //   }));
-  //   const res = await request(server)
-  //     .get('/users/testuser')
-
-
-  //   console.log(res.body)
-    
-  //   expect(res.statusCode).toEqual(500);
-  //   expect(res.body).toHaveProperty('error', 'Database Error');
-  //   // expect(mockUserFindOne).toHaveBeenCalledWith({ "personal_info.username": "testuser" });
-  // });
 });
 
-  // admin.initializeApp({ credential: admin.credential.cert(serviceAccountKey) });
+describe("PUT /users/:id", () => {
+  it("should update user profile", async () => {
+    const res = await request(server)
+      .put(`/users/${user_id}`)
+      .set("Authorization", "Bearer " + access_token)
+      .send({
+        username: "newUsername",
+        bio: "Updated bio",
+        social_links: { twitter: "https://twitter.com/newTwitterHandle" }
+      });
 
+    expect(res.statusCode).toEqual(200);
+    expect(res.body.updatedUser.personal_info).toHaveProperty("username", "newUsername");
+    expect(res.body.updatedUser.personal_info).toHaveProperty("bio", "Updated bio");
+    expect(res.body.updatedUser.social_links).toHaveProperty("twitter", "https://twitter.com/newTwitterHandle");
+  });
 
-  // describe("POST /google-auth", () => {
-  //   mockUserToken = admin.auth().createCustomToken(user_id);
-  //   mockUserNoOAuthToken = admin.auth().createCustomToken(user_id);
+  it("should fail to update with unauthorized user", async () => {
+    const res = await request(server)
+      .put(`/users/${user_id}altered`)
+      .set("Authorization", "Bearer " + access_token)
+      .send({
+        username: "anotherUsername",
+        bio: "Another bio"
+      });
+    expect(res.statusCode).toEqual(403);
+    expect(res.body).toHaveProperty("error", "Forbidden");
+  });
 
-  //   it('should creat a new user with google auth', async () => {
+  it("should fail to update if new username already exists", async () => {
+    const res = await request(server)
+      .put(`/users/${user_id}`)
+      .set("Authorization", "Bearer " + access_token)
+      .send({
+        username: "testacc",
+        bio: "Another bio"
+      });
+    expect(res.statusCode).toEqual(409);
+    expect(res.body).toHaveProperty("error", "Username already taken");
+  });
+});
 
-  //     const response = await request(server)
-  //       .post('/google-auth')
-  //       .send({ access_token: mockUserToken });
+describe("POST /users/:id", () => {
+  it("should update user password with correct credentials", async () => {
+    const res = await request(server)
+      .post(`/users/${user_id}`)
+      .set("Authorization", "Bearer " + access_token)
+      .send({
+        currentPassword: "Test1234!",
+        newPassword: "NewPassword123!"
+      });
+    expect(res.statusCode).toEqual(200);
+    expect(res.body).toHaveProperty("status", "password changed");
+  });
 
-  //     expect(response.statusCode).toEqual(200);
-  //     console.log(response.body);
-  //     expect(response.body).toHaveProperty('personal_info');
-  //     expect(response.body.personal_info.email).toBe(mockUser.email);
-  //     expect(response.body.personal_info.fullname).toBe(mockUser.name);
+  it("should fail to update password with invalid new password", async () => {
+    const res = await request(server)
+      .post(`/users/${user_id}`)
+      .set("Authorization", "Bearer " + access_token)
+      .send({
+        currentPassword: "NewPassword123!",
+        newPassword: "NewPassword"
+      });
+    expect(res.statusCode).toEqual(403);
+    expect(res.body).toHaveProperty("error", "Password should be 6 to 20 characters long with a numeric, 1 lowercase and 1 uppercase letters");
+  });
+
+  it("should fail to update password with incorrect current password", async () => {
+    const res = await request(server)
+      .post(`/users/${user_id}`)
+      .set("Authorization", "Bearer " + access_token)
+      .send({
+        currentPassword: "WrongPassword123!",
+        newPassword: "NewPassword123!"
+      });
+    expect(res.statusCode).toEqual(403);
+    expect(res.body).toHaveProperty("error", "Incorrect current password");
+  });
+
+  it('should fail if user account was created with oauth', async () => {
+    const mockUser = {
+      personal_info: {
+        email: 'test@example.com',
+      },
+      google_auth: true,
+      facebook_auth: false
+    };
+
+    jest.spyOn(User, 'findOne').mockImplementationOnce(() => Promise.resolve(mockUser));
+
+    jest.spyOn(bcrypt, 'compare').mockImplementationOnce((password, hash, callback) => {
+      callback(null, false);
+    });
+
+    const response = await request(server)
+      .post(`/users/${user_id}`)
+      .set("Authorization", "Bearer " + access_token)
+      .send({
+        currentPassword: "WrongPassword123!",
+        newPassword: "NewPassword123!"
+      });
+
+    expect(response.statusCode).toEqual(403);
+    expect(response.body).toHaveProperty("error", "You can't change account's password because you logged in through google");
+    expect(bcrypt.compare).not.toHaveBeenCalled();
+
+    jest.restoreAllMocks();
+  });
+
+  it("should fail to update if User ID does not match logged in user", async () => {
+    const res = await request(server)
+      .post(`/users/${user_id}fail`)
+      .set("Authorization", "Bearer " + access_token)
+      .send({
+        currentPassword: "WrongPassword123!",
+        newPassword: "NewPassword123!"
+      });
+    console.log(res.body)
+    expect(res.statusCode).toEqual(403);
+    expect(res.body).toHaveProperty("error", "Incorrect User ID. You can only edit your account");
+  });
+
+  // it('should fail if there is an unexpected server error', async () => {
+  //   const originalBcrypt = bcrypt.compare;
+
+  //   bcrypt.compare = jest.fn(() => {
+  //     return Promise.reject(new Error('Some error occured while changing the password, please try again later'));
   //   });
 
-  //   it('should login an existing user with Google auth', async () => {
-  //     const existingUser = new User({
-  //       personal_info: mockUser,
-  //       admin: false,
-  //       google_auth: true,
-  //       facebook_auth: false
+  //   const response = await request(server)
+  //     .post(`/users/${user_id}`)
+  //     .set("Authorization", "Bearer " + access_token)
+  //     .send({
+  //       currentPassword: "WrongPassword123!",
+  //       newPassword: "NewPassword123!"
   //     });
 
-  //     await existingUser.save();
+  //   expect(response.statusCode).toEqual(500);
+  //   expect(response.body).toHaveProperty('error', 'Some error occured while changing the password, please try again later');
 
-  //     const response = await request(server)
-  //       .post('/google-auth')
-  //       .send({ access_token: mockUser });
-
-  //     expect(response.statusCode).toEqual(200);
-  //     expect(response.body.personal_info.email).toBe(mockUser.email);
-  //   });
-
-  //   it('should not allow login for a user who signed up without google auth', async () => {
-
-  //     const userWithoutGoogle = new User({
-  //       personal_info: mockUserNoOAuth,
-  //       admin: false,
-  //       google_auth: false,
-  //       facebook_auth: false
-  //     });
-
-  //     await userWithoutGoogle.save();
-
-
-  //     const response = await request(server)
-  //       .post('/google-auth')
-  //       .send({ access_token: mockUserNoOAuth });
-
-  //     expect(response.statusCode).toEqual(403);
-  //     expect(response.body).toHaveProperty("error", "This email was signed up without google. Please log in with password to access the account");
-  //   });
-
-  //   it('should respond with error for invalid Google token', async () => {
-  //     const response = await request(server)
-  //       .post('/google-auth')
-  //       .send({ access_token: "invalid token" });
-
-  //     expect(response.statusCode).toEqual(500);
-  //     expect(response.body).toHaveProperty("error", "Failed to authenticate you with google. Try with some other google account");
-  //   });
+  //   bcrypt.compare = originalBcrypt;
   // });
 
-  describe("PUT /users/:id", () => {
-    it("should update user profile", async () => {
-      const res = await request(server)
-        .put(`/users/${user_id}`)
-        .set("Authorization", "Bearer " + access_token)
-        .send({
-          username: "newUsername",
-          bio: "Updated bio",
-          social_links: { twitter: "https://twitter.com/newTwitterHandle" }
-        });
+  it('should fail if there is an unexpected server error', async () => {
+    const originalFindOne = User.findOne;
 
-      expect(res.statusCode).toEqual(200);
-      expect(res.body.updatedUser.personal_info).toHaveProperty("username", "newUsername");
-      expect(res.body.updatedUser.personal_info).toHaveProperty("bio", "Updated bio");
-      expect(res.body.updatedUser.social_links).toHaveProperty("twitter", "https://twitter.com/newTwitterHandle");
+    User.findOne = jest.fn(() => {
+      return Promise.reject(new Error('Unexpected server error'));
     });
 
-    it("should fail to update with unauthorized user", async () => {
-      const res = await request(server)
-        .put(`/users/${user_id}altered`)
-        .set("Authorization", "Bearer " + access_token)
-        .send({
-          username: "anotherUsername",
-          bio: "Another bio"
-        });
-      expect(res.statusCode).toEqual(403);
-      expect(res.body).toHaveProperty("error", "Forbidden");
-    });
-    it("should fail to update if new username already exists", async () => {
-      const res = await request(server)
-        .put(`/users/${user_id}`)
-        .set("Authorization", "Bearer " + access_token)
-        .send({
-          username: "mail4brando",
-          bio: "Another bio"
-        });
-      expect(res.statusCode).toEqual(409);
-      expect(res.body).toHaveProperty("error", "Username already taken");
-    });
+    const response = await request(server)
+      .post(`/users/${user_id}`)
+      .set("Authorization", "Bearer " + access_token)
+      .send({
+        currentPassword: "WrongPassword123!",
+        newPassword: "NewPassword123!"
+      });
+
+    expect(response.statusCode).toEqual(500);
+    expect(response.body).toHaveProperty('error', 'Unexpected server error');
+
+    User.findOne = originalFindOne;
+  });
+});
+
+describe("DELETE /users/:id", () => {
+  it("should delete a user", async () => {
+    const res = await request(server)
+      .delete("/users/" + user_id)
+      .set("Authorization", "Bearer " + access_token);
+    expect(res.statusCode).toEqual(200);
   });
 
-  describe("POST /users/:id", () => {
-    it("should update user password with correct credentials", async () => {
-      const res = await request(server)
-        .post(`/users/${user_id}`)
-        .set("Authorization", "Bearer " + access_token)
-        .send({
-          currentPassword: "Test1234!",
-          newPassword: "NewPassword123!"
-        });
-      expect(res.statusCode).toEqual(200);
-      expect(res.body).toHaveProperty("status", "password changed");
-    });
-
-    it("should fail to update password with invalid new password", async () => {
-      const res = await request(server)
-        .post(`/users/${user_id}`)
-        .set("Authorization", "Bearer " + access_token)
-        .send({
-          currentPassword: "NewPassword123!",
-          newPassword: "NewPassword"
-        });
-      expect(res.statusCode).toEqual(403);
-      expect(res.body).toHaveProperty("error", "Password should be 6 to 20 characters long with a numeric, 1 lowercase and 1 uppercase letters");
-    });
-
-    it("should fail to update password with incorrect current password", async () => {
-      const res = await request(server)
-        .post(`/users/${user_id}`)
-        .set("Authorization", "Bearer " + access_token)
-        .send({
-          currentPassword: "WrongPassword123!",
-          newPassword: "NewPassword123!"
-        });
-      expect(res.statusCode).toEqual(403);
-      expect(res.body).toHaveProperty("error", "Incorrect current password");
-    });
-
-    // it("should fail to update password if account was created with oauth", async () => {
-    //   const res = await request(server)
-    //     .post(`/users/${user_id}`)
-    //     .set("Authorization", "Bearer " + access_token)
-    //     .send({
-    //       currentPassword: "WrongPassword123!",
-    //       newPassword: "NewPassword123!"
-    //     });
-    //   expect(res.statusCode).toEqual(403);
-    //   expect(res.body).toHaveProperty("error", "Incorrect current password");
-    // });
-
-    it("should fail to update if user is not found", async () => {
-      const res = await request(server)
-        .post(`/users/${user_id}fail`)
-        .set("Authorization", "Bearer asdASD" + access_token + "fail")
-        .send({
-          currentPassword: "WrongPassword123!",
-          newPassword: "NewPassword123!"
-        });
-      expect(res.statusCode).toEqual(500);
-      expect(res.body).toHaveProperty("error", "User not found");
-    });
+  it("should fail if User ID does not match logged in user", async () => {
+    const res = await request(server)
+      .delete(`/users/${user_id}fail`)
+      .set("Authorization", "Bearer " + access_token);
+    expect(res.statusCode).toEqual(403);
+    expect(res.body).toHaveProperty("error", "Forbidden");
   });
 
-  describe("DELETE /users/:id", () => {
-    it("should delete a user", async () => {
-      const res = await request(server)
-        .delete("/users/" + user_id)
-        .set("Authorization", "Bearer " + access_token);
-      expect(res.statusCode).toEqual(200);
+  it('should fail if there is an unexpected server error', async () => {
+    const originalFinByIdAndDelete = User.findByIdAndDelete;
+
+    User.findByIdAndDelete = jest.fn(() => {
+      return Promise.reject(new Error('Error deleting user'));
     });
+
+    const response = await request(server)
+      .delete(`/users/${user_id}`)
+      .set("Authorization", "Bearer " + access_token)
+
+    expect(response.statusCode).toEqual(500);
+    expect(response.body).toHaveProperty('error', 'Error deleting user');
+
+    User.findByIdAndDelete = originalFinByIdAndDelete;
   });
+});

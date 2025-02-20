@@ -46,26 +46,29 @@ const App = () => {
 
 
     return (
-        <ThemeContext.Provider value={{ theme, setTheme }}>
-            <UserContext.Provider value={{ userAuth, setUserAuth }}>
-                <Routes>
-                    <Route path="/" element={<Navbar />}>
-                        <Route index element={<HomePage />} />
-                        <Route path="dashboard" element={<SideNav />} />
-                        <Route path="settings" element={<SideNav />}>
-                            <Route path="edit-profile" element={<EditProfile />} />
-                            <Route path="change-password" element={<ChangePassword />} />
+        <>
+        Test
+            <ThemeContext.Provider value={{ theme, setTheme }}>
+                <UserContext.Provider value={{ userAuth, setUserAuth }}>
+                    <Routes>
+                        <Route path="/" element={<Navbar />}>
+                            <Route index element={<HomePage />} />
+                            <Route path="dashboard" element={<SideNav />} />
+                            <Route path="settings" element={<SideNav />}>
+                                <Route path="edit-profile" element={<EditProfile />} />
+                                <Route path="change-password" element={<ChangePassword />} />
+                            </Route>
+                            <Route path="signin" element={<UserAuthForm type="sign-in" />} />
+                            <Route path="signup" element={<UserAuthForm type="sign-up" />} />
+                            <Route path="user/:id" element={<ProfilePage />} />
+                            <Route path="privacy-policy" element={<PrivacyPolicy />} />
+                            <Route path="data-deletion" element={<DataDeletion />} />
+                            <Route path="*" element={<PageNotFound />} />
                         </Route>
-                        <Route path="signin" element={<UserAuthForm type="sign-in" />} />
-                        <Route path="signup" element={<UserAuthForm type="sign-up" />} />
-                        <Route path="user/:id" element={<ProfilePage />} />
-                        <Route path="privacy-policy" element={<PrivacyPolicy />} />
-                        <Route path="data-deletion" element={<DataDeletion />} />
-                        <Route path="*" element={<PageNotFound />} />
-                    </Route>
-                </Routes>
-            </UserContext.Provider>
-        </ThemeContext.Provider>
+                    </Routes>
+                </UserContext.Provider>
+            </ThemeContext.Provider>
+        </>
     );
 
 }

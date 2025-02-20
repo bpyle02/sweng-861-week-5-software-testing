@@ -6,7 +6,6 @@ import { nanoid } from 'nanoid';
 import jwt from 'jsonwebtoken';
 import cors from 'cors';
 import admin from "firebase-admin";
-// import serviceAccountKey from "./etc/secrets/firebase_private_key.json" with { type: "json" }
 import { getAuth } from "firebase-admin/auth";
 import User from './Schema/User.js';
 import swaggerJsdoc from 'swagger-jsdoc';
@@ -49,7 +48,7 @@ const standard_limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 1000ms in a second * 60 seconds in a minute * 15 = 15 minutes in milliseconds
     max: 100 // limit each IP to 100 requests per windowMs
 });
-const edit_account_limiter = rateLimit({
+export const edit_account_limiter = rateLimit({
     windowMs: 15 * 60 * 1000, // 15 minutes
     max: 100 // limit each IP to 100 requests per windowMs
 });
@@ -83,10 +82,8 @@ mongoose.connect((process.env.DB_LOCATION), {
     autoIndex: true
 })
 
-const verifyJWT = (req, res, next) => {
-
+export const verifyJWT = (req, res, next) => {
     const authHeader = req.headers['authorization'];
-
     const token = authHeader && authHeader.split(" ")[1];
 
     if (token == null) {
@@ -102,13 +99,9 @@ const verifyJWT = (req, res, next) => {
         req.admin = user.admin
         next()
     })
-
 }
 
-const formatDatatoSend = (user) => {
-
-    console.log(user._id)
-
+export const formatDatatoSend = (user) => {
     const access_token = jwt.sign({ id: user._id, admin: user.admin }, process.env.SECRET_ACCESS_KEY)
 
     return {
@@ -120,16 +113,13 @@ const formatDatatoSend = (user) => {
     }
 }
 
-const generateUsername = async (email) => {
-
+export const generateUsername = async (email) => {
     let username = email.split("@")[0];
-
     let isUsernameNotUnique = await User.exists({ "personal_info.username": username }).then((result) => result)
 
     isUsernameNotUnique ? username += nanoid().substring(0, 5) : "";
 
     return username;
-
 }
 
 // Create New User
@@ -218,124 +208,124 @@ server.post("/users/login", standard_limiter, (req, res) => {
 
 })
 
-server.post("/google-auth", new_account_limiter, async (req, res) => {
+// server.post("/google-auth", new_account_limiter, async (req, res) => {
 
-    let { access_token } = req.body;
+//     let { access_token } = req.body;
 
-    getAuth()
-        .verifyIdToken(access_token)
-        .then(async (decodedUser) => {
+//     getAuth()
+//         .verifyIdToken(access_token)
+//         .then(async (decodedUser) => {
 
-            let { email, name, picture } = decodedUser;
-            let isAdmin = false;
+//             let { email, name, picture } = decodedUser;
+//             let isAdmin = false;
 
-            if (process.env.ADMIN_EMAILS.split(",").includes(email)) {
-                isAdmin = true;
-            }
+//             if (process.env.ADMIN_EMAILS.split(",").includes(email)) {
+//                 isAdmin = true;
+//             }
 
-            picture = picture.replace("s96-c", "s384-c");
+//             picture = picture.replace("s96-c", "s384-c");
 
-            let user = await User.findOne({ "personal_info.email": email }).select("personal_info.fullname personal_info.username personal_info.profile_img admin google_auth facebook_auth").then((u) => {
-                return u || null
-            })
-                .catch(err => {
-                    return res.status(500).json({ "error": err.message })
-                })
+//             let user = await User.findOne({ "personal_info.email": email }).select("personal_info.fullname personal_info.username personal_info.profile_img admin google_auth facebook_auth").then((u) => {
+//                 return u || null
+//             })
+//                 .catch(err => {
+//                     return res.status(500).json({ "error": err.message })
+//                 })
 
-            if (user) { // login
-                if (!user.google_auth) {
-                    return res.status(403).json({ "error": "This email was signed up without google. Please log in with password to access the account" })
-                }
-            }
-            else { // sign up
+//             if (user) { // login
+//                 if (!user.google_auth) {
+//                     return res.status(403).json({ "error": "This email was signed up without google. Please log in with password to access the account" })
+//                 }
+//             }
+//             else { // sign up
 
-                let username = await generateUsername(email);
+//                 let username = await generateUsername(email);
 
-                user = new User({
-                    personal_info: { fullname: name, email, username, profile_img: picture },
-                    admin: isAdmin,
-                    google_auth: true,
-                    facebook_auth: false
-                })
+//                 user = new User({
+//                     personal_info: { fullname: name, email, username, profile_img: picture },
+//                     admin: isAdmin,
+//                     google_auth: true,
+//                     facebook_auth: false
+//                 })
 
-                await user.save().then((u) => {
-                    user = u;
-                })
-                    .catch(err => {
-                        return res.status(500).json({ "error": err.message })
-                    })
+//                 await user.save().then((u) => {
+//                     user = u;
+//                 })
+//                     .catch(err => {
+//                         return res.status(500).json({ "error": err.message })
+//                     })
 
-            }
+//             }
 
-            console.log("You successfully signed in with Google!")
-            return res.status(200).json(formatDatatoSend(user))
+//             console.log("You successfully signed in with Google!")
+//             return res.status(200).json(formatDatatoSend(user))
 
-        })
-        .catch(err => {
-            console.log(err.message)
-            return res.status(500).json({ "error": "Failed to authenticate you with google. Try with some other google account" })
-        })
+//         })
+//         .catch(err => {
+//             console.log(err.message)
+//             return res.status(500).json({ "error": "Failed to authenticate you with google. Try with some other google account" })
+//         })
 
-})
+// })
 
-server.post("/facebook-auth", new_account_limiter, async (req, res) => {
+// server.post("/facebook-auth", new_account_limiter, async (req, res) => {
 
-    let { access_token } = req.body;
+//     let { access_token } = req.body;
 
 
-    getAuth()
-        .verifyIdToken(access_token)
-        .then(async (decodedUser) => {
+//     getAuth()
+//         .verifyIdToken(access_token)
+//         .then(async (decodedUser) => {
 
-            let { email, name, picture } = decodedUser;
-            let isAdmin = false;
+//             let { email, name, picture } = decodedUser;
+//             let isAdmin = false;
 
-            if (process.env.ADMIN_EMAILS.split(",").includes(email)) {
-                isAdmin = true;
-            }
+//             if (process.env.ADMIN_EMAILS.split(",").includes(email)) {
+//                 isAdmin = true;
+//             }
 
-            let user = await User.findOne({ "personal_info.email": email }).select("personal_info.fullname personal_info.username personal_info.profile_img admin google_auth facebook_auth").then((u) => {
-                return u || null
-            })
-                .catch(err => {
-                    return res.status(500).json({ "error": err.message })
-                })
+//             let user = await User.findOne({ "personal_info.email": email }).select("personal_info.fullname personal_info.username personal_info.profile_img admin google_auth facebook_auth").then((u) => {
+//                 return u || null
+//             })
+//                 .catch(err => {
+//                     return res.status(500).json({ "error": err.message })
+//                 })
 
-            if (user) { // login
-                if (!user.facebook_auth) {
-                    return res.status(403).json({ "error": "This email was signed up without facebook. Please log in with password to access the account" })
-                }
-            }
-            else { // sign up
+//             if (user) { // login
+//                 if (!user.facebook_auth) {
+//                     return res.status(403).json({ "error": "This email was signed up without facebook. Please log in with password to access the account" })
+//                 }
+//             }
+//             else { // sign up
 
-                let username = await generateUsername(email);
+//                 let username = await generateUsername(email);
 
-                user = new User({
-                    personal_info: { fullname: name, email, username, profile_img: picture },
-                    admin: isAdmin,
-                    google_auth: false,
-                    facebook_auth: true
-                })
+//                 user = new User({
+//                     personal_info: { fullname: name, email, username, profile_img: picture },
+//                     admin: isAdmin,
+//                     google_auth: false,
+//                     facebook_auth: true
+//                 })
 
-                await user.save().then((u) => {
-                    user = u;
-                })
-                    .catch(err => {
-                        return res.status(500).json({ "error": err.message })
-                    })
+//                 await user.save().then((u) => {
+//                     user = u;
+//                 })
+//                     .catch(err => {
+//                         return res.status(500).json({ "error": err.message })
+//                     })
 
-            }
+//             }
 
-            console.log("You successfully signed in with Facebook!")
-            return res.status(200).json(formatDatatoSend(user))
+//             console.log("You successfully signed in with Facebook!")
+//             return res.status(200).json(formatDatatoSend(user))
 
-        })
-        .catch(err => {
-            console.log(err.message)
-            return res.status(500).json({ "error": "Failed to authenticate you with facebook. Try with some other google account" })
-        })
+//         })
+//         .catch(err => {
+//             console.log(err.message)
+//             return res.status(500).json({ "error": "Failed to authenticate you with facebook. Try with some other google account" })
+//         })
 
-})
+// })
 
 // Get User Data
 server.get("/users/:username", standard_limiter, (req, res) => {
@@ -358,14 +348,11 @@ server.put("/users/:id", verifyJWT, edit_account_limiter, (req, res) => {
         "social_links": req.body.social_links
     };
 
-    if (req.user !== req.params.id) return res.status(403).json({ error: "Forbidden" });
+    if (req.user !== req.originalUrl.split('/')[2]) return res.status(403).json({ error: "Forbidden" });
 
-    User.findOneAndUpdate({ _id: req.params.id }, updateData, { new: true, runValidators: true })
-    .select("-personal_info.password -google_auth -facebook_auth -updatedAt -posts -admin")
+    User.findOneAndUpdate({ _id: req.user }, updateData, { new: true, runValidators: true })
+        .select("-personal_info.password -google_auth -facebook_auth -updatedAt -posts -admin")
         .then(updatedUser => {
-            if (!updatedUser) {
-                return res.status(404).json({ error: "User not found" });
-            }
             res.status(200).json({ updatedUser });
         })
         .catch(err => {
@@ -386,12 +373,9 @@ server.post("/users/:id", verifyJWT, edit_account_limiter, (req, res) => {
         return res.status(403).json({ error: "Password should be 6 to 20 characters long with a numeric, 1 lowercase and 1 uppercase letters" })
     }
 
-    User.findOne({ _id: req.user })
-        .then((user) => {
-            console.log(user)
-            if (!user) {
-                return res.status(500).json({ error: "User not found" })
-            } else {
+    if (req.user === req.originalUrl.split('/')[2]) {
+        User.findOne({ _id: req.user })
+            .then((user) => {
                 if (user.google_auth) {
                     return res.status(403).json({ error: "You can't change account's password because you logged in through google" })
                 }
@@ -414,34 +398,26 @@ server.post("/users/:id", verifyJWT, edit_account_limiter, (req, res) => {
                             .catch(err => {
                                 return res.status(500).json({ error: 'Some error occured while saving new password, please try again later' })
                             })
-    
+        
+                        })
                     })
                 })
-            }
-
-
-        })
-        .catch(err => {
-            console.log(err);
-            return res.status(500).json({ error: "Unexpected server error" })
-        })
-
-})
+            .catch(err => {
+                console.log(err);
+                return res.status(500).json({ error: "Unexpected server error" })
+            })
+    } else {
+        return res.status(403).json({ error: "Incorrect User ID. You can only edit your account" }) 
+    }
+});
 
 // Delete User
 server.delete("/users/:id", verifyJWT, delete_account_limiter, (req, res) => {
-    
-    if (req.user !== req.params.id) return res.status(403).json({ error: "Forbidden" });
 
-    console.log(req.params.id)
+    if (req.user !== req.originalUrl.split('/')[2]) return res.status(403).json({ error: "Forbidden" });
 
-    User.findByIdAndDelete(req.params.id)
+    User.findByIdAndDelete(req.user)
         .then(deletedUser => {
-            if (!deletedUser) {
-                console.log("user not found")
-                return res.status(404).json({ error: "User not found" });
-            }
-            console.log("user deleted successfully")
             res.status(200).json({ message: "User deleted successfully" });
         })
         .catch(err => {
