@@ -2,8 +2,8 @@ import { useContext, useEffect, useState } from "react";
 import { Link, Outlet, useNavigate } from "react-router-dom";
 import darkLogo from "../images/logo-dark.png";
 import lightLogo from "../images/logo-light.png";
-import { ThemeContext, UserContext } from '../App';
-import UserNavigationPanel from "./user-navigation";
+import { ThemeContext, UserContext } from '../App.jsx';
+import UserNavigationPanel from "./user-navigation.jsx";
 import axios from "axios";
 
 const Navbar = () => {

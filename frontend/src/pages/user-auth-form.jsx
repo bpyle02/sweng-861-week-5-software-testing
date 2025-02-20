@@ -1,14 +1,14 @@
 import { useContext } from "react";
-import AnimationWrapper from "../common/page-animation";
-import InputBox from "../components/input";
+import AnimationWrapper from "../common/page-animation.jsx";
+import InputBox from "../components/input.jsx";
 import googleIcon from "../images/google.png";
 import facebookIcon from "../images/facebook.png";
 import { Link, Navigate } from "react-router-dom";
 import { Toaster, toast } from "react-hot-toast";
 import axios from "axios";
-import { UserContext } from "../App";
-import { authWithGoogle } from "../common/firebase";
-import { authWithFacebook } from "../common/firebase";
+import { UserContext } from "../App.jsx";
+import { authWithGoogle } from "../common/firebase.jsx";
+import { authWithFacebook } from "../common/firebase.jsx";
 
 const UserAuthForm = ({ type }) => {
 

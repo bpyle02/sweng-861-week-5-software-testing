@@ -1,15 +1,15 @@
 import { Routes, Route } from "react-router-dom";
-import Navbar from "./components/Navbar";
-import UserAuthForm from "./pages/user-auth-form";
+import Navbar from "./components/navbar.jsx";
+import UserAuthForm from "./pages/user-auth-form.jsx";
 import { createContext, useEffect, useState } from "react";
-import HomePage from "./pages/Home";
-import ChangePassword from "./pages/change-password";
-import PageNotFound from "./pages/404";
-import ProfilePage from "./pages/profile";
-import SideNav from "./components/sidenavbar";
-import PrivacyPolicy from "./pages/privacy-policy";
-import DataDeletion from "./pages/data-deletion";
-import EditProfile from "./pages/edit-profile";
+import HomePage from "./pages/home.jsx";
+import ChangePassword from "./pages/change-password.jsx";
+import PageNotFound from "./pages/404.jsx";
+import ProfilePage from "./pages/profile.jsx";
+import SideNav from "./components/sidenavbar.jsx";
+import PrivacyPolicy from "./pages/privacy-policy.jsx";
+import DataDeletion from "./pages/data-deletion.jsx";
+import EditProfile from "./pages/edit-profile.jsx";
 
 export const UserContext = createContext({})
 

@@ -1,14 +1,14 @@
 import axios from "axios";
 import { useContext, useEffect, useState } from "react";
 import { Link, useParams } from "react-router-dom";
-import AnimationWrapper from "../common/page-animation";
-import Loader from "../components/loader";
-import { UserContext } from "../App";
-import AboutUser from "../components/about";
-import { filterPaginationData } from "../common/filter-pagination-data";
-import InPageNavigation from "../components/inpage-navigation";
-import NoDataMessage from "../components/nodata";
-import PageNotFound from "./404";
+import AnimationWrapper from "../common/page-animation.jsx";
+import Loader from "../components/loader.jsx";
+import { UserContext } from "../App.jsx";
+import AboutUser from "../components/about.jsx";
+import { filterPaginationData } from "../common/filter-pagination-data.jsx";
+import InPageNavigation from "../components/inpage-navigation.jsx";
+import NoDataMessage from "../components/nodata.jsx";
+import PageNotFound from "./404.jsx";
 
 export const profileDataStructure = {
     personal_info: {

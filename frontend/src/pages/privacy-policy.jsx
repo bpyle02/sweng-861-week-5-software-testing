@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import lightFullLogo from "../images/full-logo-light.png";
 import darkFullLogo from "../images/full-logo-dark.png";
-import { ThemeContext } from "../App";
+import { ThemeContext } from "../App.jsx";
 import { useContext } from "react";
 
 const PrivacyPolicy = () => {

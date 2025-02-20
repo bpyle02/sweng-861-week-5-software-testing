@@ -1,10 +1,10 @@
 import React from 'react';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import '@testing-library/jest-dom';
-import EditProfile from '../src/pages/edit-profile';
+import EditProfile from '../src/pages/edit-profile.jsx';
 import axios from 'axios';
 import MockAdapter from 'axios-mock-adapter';
-import { UserContext } from '../src/App';
+import { UserContext } from '../src/App.jsx';
 import { MemoryRouter } from 'react-router-dom';
 
 // Mock axios for all tests

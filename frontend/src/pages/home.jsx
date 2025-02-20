@@ -1,11 +1,11 @@
 import axios from "axios";
-import AnimationWrapper from "../common/page-animation";
-import InPageNavigation from "../components/inpage-navigation";
+import AnimationWrapper from "../common/page-animation.jsx";
+import InPageNavigation from "../components/inpage-navigation.jsx";
 import { useEffect, useState } from "react";
-import Loader from "../components/loader";
-import { activeTabRef } from "../components/inpage-navigation";
-import NoDataMessage from "../components/nodata";
-import { filterPaginationData } from "../common/filter-pagination-data";
+import Loader from "../components/loader.jsx";
+import { activeTabRef } from "../components/inpage-navigation.jsx";
+import NoDataMessage from "../components/nodata.jsx";
+import { filterPaginationData } from "../common/filter-pagination-data.jsx";
 
 const HomePage = () => {
     let [posts, setPost] = useState(null);

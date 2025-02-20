@@ -1,7 +1,7 @@
 import { useContext } from "react";
-import AnimationWrapper from "../common/page-animation";
+import AnimationWrapper from "../common/page-animation.jsx";
 import { Link } from "react-router-dom";
-import { UserContext } from "../App";
+import { UserContext } from "../App.jsx";
 
 const UserNavigationPanel = () => {
 

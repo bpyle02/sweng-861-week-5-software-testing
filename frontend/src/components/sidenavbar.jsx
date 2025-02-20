@@ -1,6 +1,6 @@
 import { useContext, useEffect, useRef, useState } from "react"
 import { Outlet, Navigate, NavLink } from "react-router-dom"
-import { UserContext } from "../App"
+import { UserContext } from "../App.jsx"
 
 const SideNav = () => {
 

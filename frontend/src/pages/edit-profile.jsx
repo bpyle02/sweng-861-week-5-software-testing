@@ -1,11 +1,11 @@
 import { useContext, useEffect, useRef, useState } from "react";
-import { UserContext } from "../App";
+import { UserContext } from "../App.jsx";
 import axios from "axios";
-import { profileDataStructure } from "./profile";
-import AnimationWrapper from "../common/page-animation";
-import Loader from "../components/loader";
+import { profileDataStructure } from "./profile.jsx";
+import AnimationWrapper from "../common/page-animation.jsx";
+import Loader from "../components/loader.jsx";
 import toast, { Toaster } from "react-hot-toast";
-import InputBox from "../components/input";
+import InputBox from "../components/input.jsx";
 import { useNavigate } from "react-router-dom";
 import { jwtDecode } from 'jwt-decode'
 
