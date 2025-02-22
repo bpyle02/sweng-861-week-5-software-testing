@@ -5,8 +5,6 @@ import jwt from "jsonwebtoken";
 import { jest } from "@jest/globals"
 import User from "../Schema/User.js";
 import bcrypt from 'bcrypt';
-import mongoose from "mongoose";
-import { getAuth } from "firebase-admin/auth";
 
 let access_token = "";
 let user_id = "";
